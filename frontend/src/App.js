@@ -47,6 +47,7 @@ const VIEWS = [
 function App() {
   const [tasks, setTasks] = useState([]);
   const [projects, setProjects] = useState([]);
+  // eslint-disable-next-line no-unused-vars
   const [labels, setLabels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState('gantt');
@@ -72,9 +73,13 @@ function App() {
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [calendarDate, setCalendarDate] = useState(new Date());
+  // eslint-disable-next-line no-unused-vars
   const [activity, setActivity] = useState([]);
   const fileInputRef = useRef(null);
   const [draggedTask, setDraggedTask] = useState(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [showPasteImport, setShowPasteImport] = useState(false);
+  const [pasteText, setPasteText] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -94,8 +99,13 @@ function App() {
     tags: [],
     estimatedHours: 8,
     actualHours: 0,
-    recurring: null
+    recurring: null,
+    scheduledDate: null,
+    reminderTime: '',
+    reminderEnabled: false
   });
+
+  const [kanbanMonth, setKanbanMonth] = useState(new Date());
 
   const showNotification = (message, type = 'info') => {
     setNotification({ message, type });
@@ -210,13 +220,110 @@ function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showModal]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (showDropdown && !e.target.closest('.dropdown')) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showDropdown]);
+
+  // Calculate capacity and workload
+  const calculateCapacity = () => {
+    const hoursPerDay = 8; // Default work hours per day
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    // Get tasks scheduled for today
+    const todaysTasks = tasks.filter(t =>
+      t.scheduledDate === todayStr && t.status !== 'completed'
+    );
+    const todaysHours = todaysTasks.reduce((sum, t) => sum + (t.estimatedHours || 2), 0);
+
+    // Get tasks in staging (soon)
+    const soonTasks = tasks.filter(t =>
+      t.scheduledDate === 'soon' && t.status !== 'completed'
+    );
+    const soonHours = soonTasks.reduce((sum, t) => sum + (t.estimatedHours || 2), 0);
+
+    // Get tasks in backlog
+    const backlogTasks = tasks.filter(t =>
+      (t.scheduledDate === null || t.scheduledDate === undefined) && t.status !== 'completed'
+    );
+    const backlogHours = backlogTasks.reduce((sum, t) => sum + (t.estimatedHours || 2), 0);
+
+    // Calculate week capacity
+    const daysInWeek = 5;
+    const weekCapacity = hoursPerDay * daysInWeek;
+
+    // Get this week's scheduled hours
+    const weekEnd = new Date(today);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    const thisWeekTasks = tasks.filter(t => {
+      if (!t.scheduledDate || t.scheduledDate === 'soon' || t.status === 'completed') return false;
+      return t.scheduledDate >= todayStr && t.scheduledDate <= weekEnd.toISOString().split('T')[0];
+    });
+    const weekHours = thisWeekTasks.reduce((sum, t) => sum + (t.estimatedHours || 2), 0);
+
+    return {
+      hoursPerDay,
+      todaysHours,
+      todaysCapacity: hoursPerDay,
+      todaysAvailable: Math.max(0, hoursPerDay - todaysHours),
+      soonHours,
+      backlogHours,
+      weekHours,
+      weekCapacity,
+      weekAvailable: Math.max(0, weekCapacity - weekHours),
+      isOverloaded: todaysHours > hoursPerDay,
+      utilizationPercent: Math.round((todaysHours / hoursPerDay) * 100)
+    };
+  };
+
+  const capacity = calculateCapacity();
+
+  // AI Smart Scheduling - find best date for a task
+  const suggestScheduleDate = (estimatedHours = 2) => {
+    const hoursPerDay = 8;
+    const today = new Date();
+
+    // Check each day starting from today
+    for (let i = 0; i < 14; i++) {
+      const checkDate = new Date(today);
+      checkDate.setDate(checkDate.getDate() + i);
+      const dateStr = checkDate.toISOString().split('T')[0];
+
+      // Skip weekends
+      const dayOfWeek = checkDate.getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+
+      // Calculate hours already scheduled for this day
+      const dayTasks = tasks.filter(t =>
+        t.scheduledDate === dateStr && t.status !== 'completed'
+      );
+      const dayHours = dayTasks.reduce((sum, t) => sum + (t.estimatedHours || 2), 0);
+
+      // If there's room, suggest this day
+      if (dayHours + estimatedHours <= hoursPerDay) {
+        return dateStr;
+      }
+    }
+
+    // If all days are full, return 'soon' for staging
+    return 'soon';
+  };
 
   const shadeColor = (color, percent) => {
     const num = parseInt(color.replace('#', ''), 16);
     const amt = Math.round(2.55 * percent);
     const R = (num >> 16) + amt;
-    const G = (num >> 8 & 0x00FF) + amt;
+    const G = ((num >> 8) & 0x00FF) + amt;
     const B = (num & 0x0000FF) + amt;
     return '#' + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
       (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
@@ -327,7 +434,10 @@ function App() {
       tags: originalTask.tags || [],
       estimatedHours: originalTask.estimatedHours || 8,
       actualHours: originalTask.actualHours || 0,
-      recurring: originalTask.recurring || null
+      recurring: originalTask.recurring || null,
+      scheduledDate: originalTask.scheduledDate || null,
+      reminderTime: originalTask.reminderTime || '',
+      reminderEnabled: originalTask.reminderEnabled || false
     });
     setShowModal(true);
   };
@@ -373,7 +483,10 @@ function App() {
       tags: [],
       estimatedHours: 8,
       actualHours: 0,
-      recurring: null
+      recurring: null,
+      scheduledDate: null,
+      reminderTime: '',
+      reminderEnabled: false
     });
     setShowModal(true);
   };
@@ -399,7 +512,10 @@ function App() {
       tags: ['milestone'],
       estimatedHours: 0,
       actualHours: 0,
-      recurring: null
+      recurring: null,
+      scheduledDate: null,
+      reminderTime: '',
+      reminderEnabled: false
     });
     setShowModal(true);
   };
@@ -557,6 +673,57 @@ function App() {
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
+  // Paste import handler - parses text from Apple Reminders or any line-separated list
+  const handlePasteImport = async () => {
+    if (!pasteText.trim()) {
+      showNotification('Please paste some text first', 'error');
+      return;
+    }
+
+    const lines = pasteText.split('\n').filter(line => line.trim());
+    const today = new Date().toISOString().split('T')[0];
+    const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    let importedCount = 0;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
+
+      // Parse line - could be "Task name" or "- Task name" or "• Task name"
+      let taskName = trimmed.replace(/^[-•*]\s*/, '').replace(/^\d+\.\s*/, '');
+      if (!taskName) continue;
+
+      try {
+        await fetch(`${API_URL}/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: taskName,
+            start: today,
+            end: nextWeek,
+            status: 'not_started',
+            priority: 'medium',
+            scheduledDate: null // Goes to "Later" staging
+          })
+        });
+        importedCount++;
+      } catch (error) {
+        console.error('Failed to import task:', taskName, error);
+      }
+    }
+
+    if (importedCount > 0) {
+      showNotification(`Imported ${importedCount} task(s)`, 'success');
+      fetchTasks();
+      fetchStats();
+    } else {
+      showNotification('No tasks to import', 'error');
+    }
+
+    setShowPasteImport(false);
+    setPasteText('');
+  };
+
   // Calendar helpers
   const getCalendarDays = () => {
     const year = calendarDate.getFullYear();
@@ -611,11 +778,119 @@ function App() {
     return c?.icon || '📋';
   };
 
-  // Kanban columns
-  const kanbanColumns = STATUSES.map(status => ({
-    ...status,
-    tasks: filteredTasks.filter(t => t.status === status.value)
-  }));
+  // Kanban date-based columns
+  const getKanbanDayColumns = () => {
+    const year = kanbanMonth.getFullYear();
+    const month = kanbanMonth.getMonth();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset to start of day for accurate comparison
+    const todayStr = today.toISOString().split('T')[0];
+
+    // Get days in month
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const columns = [];
+
+    // Staging columns first
+    columns.push({
+      id: 'staging_later',
+      label: 'Later',
+      sublabel: 'Backlog',
+      isStaging: true,
+      color: '#6c757d',
+      tasks: filteredTasks.filter(t =>
+        t.status !== 'completed' &&
+        (t.scheduledDate === null || t.scheduledDate === undefined)
+      )
+    });
+
+    columns.push({
+      id: 'staging_soon',
+      label: 'Soon',
+      sublabel: 'Up Next',
+      isStaging: true,
+      color: '#9B59B6',
+      tasks: filteredTasks.filter(t =>
+        t.status !== 'completed' && t.scheduledDate === 'soon'
+      )
+    });
+
+    // Day columns - only from today onwards (skip past days)
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month, day);
+      date.setHours(0, 0, 0, 0);
+      const dateStr = date.toISOString().split('T')[0];
+      const isToday = dateStr === todayStr;
+      const isPast = date < today;
+
+      // Skip past days - only show today and future
+      if (isPast && !isToday) continue;
+
+      const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'short' });
+
+      columns.push({
+        id: dateStr,
+        label: day.toString(),
+        sublabel: dayOfWeek,
+        isStaging: false,
+        isToday,
+        isPast: false,
+        color: isToday ? '#4A90D9' : '#50C878',
+        tasks: filteredTasks.filter(t =>
+          t.status !== 'completed' && t.scheduledDate === dateStr
+        )
+      });
+    }
+
+    // Completed column at the end
+    columns.push({
+      id: 'completed',
+      label: 'Done',
+      sublabel: 'Completed',
+      isStaging: false,
+      isCompleted: true,
+      color: '#50C878',
+      tasks: filteredTasks.filter(t => t.status === 'completed')
+    });
+
+    return columns;
+  };
+
+  const kanbanDayColumns = getKanbanDayColumns();
+
+  // Auto-move overdue tasks on mount
+  const autoMoveTasks = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_URL}/tasks/auto-move`, { method: 'POST' });
+      const data = await response.json();
+      if (data.moved > 0) {
+        showNotification(`${data.moved} overdue task(s) auto-moved`, 'info');
+        setTasks(data.tasks);
+      }
+    } catch (error) {
+      console.error('Failed to auto-move tasks:', error);
+    }
+  }, []);
+
+  // Auto-move overdue tasks when switching to Kanban view
+  useEffect(() => {
+    if (currentView === 'kanban') {
+      autoMoveTasks();
+    }
+  }, [currentView, autoMoveTasks]);
+
+  // Handle scheduling a task to a date
+  const handleScheduleTask = async (taskId, scheduledDate) => {
+    try {
+      await fetch(`${API_URL}/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scheduledDate })
+      });
+      fetchTasks();
+    } catch (error) {
+      console.error('Failed to schedule task:', error);
+    }
+  };
 
   if (loading) {
     return (
@@ -669,12 +944,15 @@ function App() {
             <button className="add-btn" onClick={handleAddTask}>+ Task</button>
             <button className="milestone-btn" onClick={handleAddMilestone}>◆ Milestone</button>
             <div className="dropdown">
-              <button className="more-btn">⋯</button>
-              <div className="dropdown-content">
-                <button onClick={() => handleExport('json')}>Export JSON</button>
-                <button onClick={() => handleExport('csv')}>Export CSV</button>
-                <button onClick={() => setShowImportModal(true)}>Import</button>
-              </div>
+              <button className="more-btn" onClick={() => setShowDropdown(!showDropdown)}>⋯</button>
+              {showDropdown && (
+                <div className="dropdown-content show">
+                  <button onClick={() => { handleExport('json'); setShowDropdown(false); }}>Export JSON</button>
+                  <button onClick={() => { handleExport('csv'); setShowDropdown(false); }}>Export CSV</button>
+                  <button onClick={() => { setShowImportModal(true); setShowDropdown(false); }}>Import JSON</button>
+                  <button onClick={() => { setShowPasteImport(true); setShowDropdown(false); }}>📋 Paste Import</button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -724,6 +1002,23 @@ function App() {
               <button onClick={() => setColumnWidth(prev => Math.max(prev - 10, 30))}>−</button>
               <span>{Math.round((columnWidth / 65) * 100)}%</span>
               <button onClick={() => setColumnWidth(prev => Math.min(prev + 10, 150))}>+</button>
+            </div>
+          </div>
+        )}
+
+        {currentView === 'kanban' && (
+          <div className="kanban-month-controls">
+            <button onClick={() => setKanbanMonth(new Date(kanbanMonth.getFullYear(), kanbanMonth.getMonth() - 1))}>◀</button>
+            <span className="kanban-month-title">{kanbanMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
+            <button onClick={() => setKanbanMonth(new Date(kanbanMonth.getFullYear(), kanbanMonth.getMonth() + 1))}>▶</button>
+            <button className="today-btn" onClick={() => setKanbanMonth(new Date())}>Today</button>
+            <button className="auto-move-btn" onClick={autoMoveTasks}>🔄 Auto-Move</button>
+            <div className="capacity-indicator">
+              <span className={`capacity-badge ${capacity.isOverloaded ? 'overloaded' : capacity.utilizationPercent > 80 ? 'busy' : 'available'}`}>
+                📊 Today: {capacity.todaysHours}h / {capacity.todaysCapacity}h
+                {capacity.isOverloaded && ' ⚠️'}
+              </span>
+              <span className="capacity-week">Week: {capacity.weekHours}h / {capacity.weekCapacity}h</span>
             </div>
           </div>
         )}
@@ -799,55 +1094,70 @@ function App() {
           )
         )}
 
-        {/* Kanban View */}
+        {/* Kanban View - Date-based */}
         {currentView === 'kanban' && (
-          <div className="kanban-board">
-            {kanbanColumns.map(column => (
-              <div
-                key={column.value}
-                className="kanban-column"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => {
-                  if (draggedTask) {
-                    handleStatusChange(draggedTask.id, column.value);
-                    setDraggedTask(null);
-                  }
-                }}
-              >
-                <div className="kanban-header" style={{ borderColor: column.color }}>
-                  <span className="kanban-title">{column.label}</span>
-                  <span className="kanban-count">{column.tasks.length}</span>
-                </div>
-                <div className="kanban-tasks">
-                  {column.tasks.map(task => (
-                    <div
-                      key={task.id}
-                      className="kanban-card"
-                      draggable
-                      onDragStart={() => setDraggedTask(task)}
-                      onClick={() => handleDoubleClick({ id: task.id })}
-                      style={{ borderLeftColor: task.color }}
-                    >
-                      <div className="kanban-card-header">
-                        <span className="kanban-category">{getCategoryIcon(task.category)}</span>
-                        {getPriorityBadge(task.priority)}
-                      </div>
-                      <div className="kanban-card-title">{task.name}</div>
-                      <div className="kanban-card-meta">
-                        <span className="kanban-dates">{new Date(task.end).toLocaleDateString()}</span>
-                        {task.assignee && <span className="kanban-assignee">👤 {task.assignee}</span>}
-                      </div>
-                      <div className="kanban-progress">
-                        <div className="progress-bar">
-                          <div className="progress-fill" style={{ width: `${task.progress}%`, backgroundColor: task.color }}></div>
+          <div className="kanban-date-board">
+            <div className="kanban-scroll-container">
+              {kanbanDayColumns.map(column => (
+                <div
+                  key={column.id}
+                  className={`kanban-day-column ${column.isStaging ? 'staging' : ''} ${column.isToday ? 'today' : ''} ${column.isPast ? 'past' : ''} ${column.isCompleted ? 'completed' : ''}`}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => {
+                    if (draggedTask) {
+                      if (column.isCompleted) {
+                        handleStatusChange(draggedTask.id, 'completed');
+                      } else if (column.isStaging) {
+                        handleScheduleTask(draggedTask.id, column.id === 'staging_later' ? null : 'soon');
+                      } else {
+                        handleScheduleTask(draggedTask.id, column.id);
+                      }
+                      setDraggedTask(null);
+                    }
+                  }}
+                >
+                  <div className="kanban-day-header" style={{ borderBottomColor: column.color }}>
+                    <span className="kanban-day-label">{column.label}</span>
+                    <span className="kanban-day-sublabel">{column.sublabel}</span>
+                    {column.tasks.length > 0 && <span className="kanban-day-count">{column.tasks.length}</span>}
+                  </div>
+                  <div className="kanban-day-tasks">
+                    {column.tasks
+                      .sort((a, b) => {
+                        const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+                        return (priorityOrder[a.priority] || 2) - (priorityOrder[b.priority] || 2);
+                      })
+                      .map(task => (
+                        <div
+                          key={task.id}
+                          className={`kanban-day-card priority-${task.priority}`}
+                          draggable
+                          onDragStart={() => setDraggedTask(task)}
+                          onClick={() => handleDoubleClick({ id: task.id })}
+                          style={{ borderLeftColor: task.color }}
+                        >
+                          <div className="kanban-card-priority-indicator" style={{ backgroundColor: PRIORITIES.find(p => p.value === task.priority)?.color }}></div>
+                          <div className="kanban-card-content">
+                            <div className="kanban-card-title">{task.name}</div>
+                            {task.reminderTime && (
+                              <div className="kanban-card-reminder">
+                                🔔 {task.reminderTime}
+                              </div>
+                            )}
+                            <div className="kanban-card-footer">
+                              <span className="kanban-card-category">{getCategoryIcon(task.category)}</span>
+                              {task.assignee && <span className="kanban-card-assignee">👤</span>}
+                              <div className="kanban-card-progress-mini">
+                                <div className="progress-fill" style={{ width: `${task.progress}%`, backgroundColor: task.color }}></div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <span>{task.progress}%</span>
-                      </div>
-                    </div>
-                  ))}
+                      ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
@@ -1174,6 +1484,51 @@ function App() {
                 </div>
               </div>
 
+              <div className="form-row scheduling-row">
+                <div className="form-group">
+                  <label>📅 Schedule (Kanban)</label>
+                  <select
+                    value={formData.scheduledDate || ''}
+                    onChange={e => setFormData({ ...formData, scheduledDate: e.target.value || null })}
+                  >
+                    <option value="">Later (Backlog)</option>
+                    <option value="soon">Soon (Up Next)</option>
+                    <option value={new Date().toISOString().split('T')[0]}>Today</option>
+                    <option value={new Date(Date.now() + 86400000).toISOString().split('T')[0]}>Tomorrow</option>
+                    <option value="custom">Pick a date...</option>
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  className="auto-schedule-btn"
+                  onClick={() => {
+                    const suggested = suggestScheduleDate(formData.estimatedHours || 2);
+                    setFormData({ ...formData, scheduledDate: suggested });
+                    showNotification(`AI suggested: ${suggested === 'soon' ? 'Soon (capacity full)' : new Date(suggested).toLocaleDateString()}`, 'info');
+                  }}
+                  title="AI will find the best day based on your capacity"
+                >
+                  🤖 Auto-Schedule
+                </button>
+                {formData.scheduledDate === 'custom' && (
+                  <div className="form-group">
+                    <label>Scheduled Date</label>
+                    <input
+                      type="date"
+                      onChange={e => setFormData({ ...formData, scheduledDate: e.target.value })}
+                    />
+                  </div>
+                )}
+                <div className="form-group">
+                  <label>🔔 Reminder Time</label>
+                  <input
+                    type="time"
+                    value={formData.reminderTime || ''}
+                    onChange={e => setFormData({ ...formData, reminderTime: e.target.value, reminderEnabled: !!e.target.value })}
+                  />
+                </div>
+              </div>
+
               <div className="form-group">
                 <label>Progress: {formData.progress}%</label>
                 <input type="range" min="0" max="100" value={formData.progress} onChange={e => setFormData({ ...formData, progress: parseInt(e.target.value) })} />
@@ -1277,6 +1632,51 @@ function App() {
               <p>Select a JSON file to import.</p>
               <input type="file" ref={fileInputRef} accept=".json" onChange={handleImport} style={{ display: 'none' }} />
               <button className="save-btn" onClick={() => fileInputRef.current?.click()}>Choose File</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Paste Import Modal */}
+      {showPasteImport && (
+        <div className="modal-overlay" onClick={() => setShowPasteImport(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>📋 Paste Import</h2>
+              <button className="close-modal" onClick={() => setShowPasteImport(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                Paste your reminders from Apple Reminders, Notes, or any list. One task per line.
+              </p>
+              <textarea
+                value={pasteText}
+                onChange={e => setPasteText(e.target.value)}
+                placeholder="- Buy groceries
+- Call dentist
+- Review project proposal
+- Send invoice to client"
+                rows={10}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.9rem',
+                  fontFamily: 'inherit',
+                  resize: 'vertical'
+                }}
+                autoFocus
+              />
+              <p style={{ marginTop: '0.5rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                Tip: In Apple Reminders, select tasks and press Cmd+C to copy them.
+              </p>
+            </div>
+            <div className="modal-actions">
+              <button className="cancel-btn" onClick={() => { setShowPasteImport(false); setPasteText(''); }}>Cancel</button>
+              <button className="save-btn" onClick={handlePasteImport}>Import {pasteText.split('\n').filter(l => l.trim()).length} Tasks</button>
             </div>
           </div>
         </div>

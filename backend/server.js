@@ -315,7 +315,11 @@ app.post('/api/tasks', (req, res) => {
       estimatedHours: estimatedHours || 8,
       actualHours: req.body.actualHours || 0,
       recurring: req.body.recurring || null,
-      dueReminder: req.body.dueReminder !== false
+      dueReminder: req.body.dueReminder !== false,
+      // Kanban scheduling fields
+      scheduledDate: req.body.scheduledDate || null, // null = staging_later, 'soon' = staging_soon, or YYYY-MM-DD
+      reminderTime: req.body.reminderTime || null, // HH:MM format for reminder
+      reminderEnabled: req.body.reminderEnabled || false
     };
 
     data.tasks.push(newTask);
@@ -417,6 +421,73 @@ app.post('/api/tasks/:id/log-time', (req, res) => {
     res.json(data.tasks[index]);
   } catch (error) {
     res.status(500).json({ error: 'Failed to log time' });
+  }
+});
+
+// Auto-move overdue tasks (for Kanban day view)
+app.post('/api/tasks/auto-move', (req, res) => {
+  try {
+    const data = readData();
+    const previousState = JSON.parse(JSON.stringify(data.tasks));
+    const today = new Date().toISOString().split('T')[0];
+    const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+    let movedCount = 0;
+
+    // Find overdue tasks (scheduledDate in the past, not completed)
+    data.tasks.forEach(task => {
+      if (task.scheduledDate &&
+          task.scheduledDate !== 'soon' &&
+          task.scheduledDate < today &&
+          task.status !== 'completed') {
+
+        const priority = task.priority || 'medium';
+        const priorityValue = priorityOrder[priority] ?? 2;
+
+        if (priorityValue <= 1) {
+          // High/Critical priority: move to today
+          task.scheduledDate = today;
+          logActivity('auto_moved', task.id, task.name, { reason: 'overdue_priority', newDate: today });
+        } else {
+          // Low/Medium priority: move to staging (soon)
+          task.scheduledDate = 'soon';
+          logActivity('auto_moved', task.id, task.name, { reason: 'overdue_staging', newDate: 'soon' });
+        }
+        movedCount++;
+      }
+    });
+
+    if (movedCount > 0) {
+      writeData(data);
+      saveToHistory('auto_move', previousState);
+    }
+
+    res.json({ moved: movedCount, tasks: data.tasks });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to auto-move tasks' });
+  }
+});
+
+// Get reminders due
+app.get('/api/reminders', (req, res) => {
+  try {
+    const data = readData();
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const currentTime = now.toTimeString().slice(0, 5); // HH:MM
+
+    const dueReminders = data.tasks.filter(task => {
+      if (!task.reminderEnabled || !task.reminderTime || task.status === 'completed') return false;
+
+      const taskDate = task.scheduledDate || task.end;
+      if (!taskDate || taskDate === 'soon' || taskDate === null) return false;
+
+      // Reminder is due if it's today and time has passed or is now
+      return taskDate === todayStr && task.reminderTime <= currentTime;
+    });
+
+    res.json(dueReminders);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get reminders' });
   }
 });
 
