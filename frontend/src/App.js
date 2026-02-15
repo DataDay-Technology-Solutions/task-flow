@@ -684,25 +684,27 @@ function App() {
       let trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
 
-      // Remove bullet points, numbers, etc.
+      // Remove bullet points, numbers, etc. at the start
       trimmed = trimmed.replace(/^[-•*]\s*/, '').replace(/^\d+\.\s*/, '').trim();
       if (!trimmed) continue;
 
       // Check if line contains multiple tasks separated by delimiters
-      // Look for patterns like: "task1, task2, task3" or "task1 - task2 - task3" or "task1 -- task2"
+      // Look for patterns like: "task1, task2" or "task1 - task2" or "task1 -- task2" or "task1 -task2"
 
-      // Split by " -- " (double dash with spaces) first
-      if (trimmed.includes(' -- ')) {
-        const subTasks = trimmed.split(' -- ').map(t => t.trim()).filter(t => t);
-        tasks.push(...subTasks);
-        continue;
+      // Split by double dash patterns: " -- ", " --", "-- "
+      if (/ ?-- ?/.test(trimmed)) {
+        const subTasks = trimmed.split(/ ?-- ?/).map(t => t.trim()).filter(t => t);
+        if (subTasks.length > 1 && subTasks.every(t => t.length > 2)) {
+          tasks.push(...subTasks);
+          continue;
+        }
       }
 
-      // Split by " - " (single dash with spaces) - but not if it looks like a date range
-      if (trimmed.includes(' - ') && !trimmed.match(/\d{1,2}\s*-\s*\d{1,2}/)) {
-        const subTasks = trimmed.split(' - ').map(t => t.trim()).filter(t => t);
+      // Split by single dash patterns: " - ", " -", "- " (but not at start, and not date ranges)
+      if (/ ?- ?/.test(trimmed) && !trimmed.match(/\d{1,2}\s*-\s*\d{1,2}/) && !trimmed.startsWith('-')) {
+        const subTasks = trimmed.split(/ ?- ?/).map(t => t.trim()).filter(t => t);
         // Only split if we get reasonable task names (not single words that might be part of a phrase)
-        if (subTasks.every(t => t.length > 2)) {
+        if (subTasks.length > 1 && subTasks.every(t => t.length > 2)) {
           tasks.push(...subTasks);
           continue;
         }
