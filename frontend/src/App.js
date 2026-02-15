@@ -1624,10 +1624,27 @@ function App() {
                 <button
                   type="button"
                   className="auto-schedule-btn"
-                  onClick={() => {
+                  onClick={async () => {
                     const suggested = suggestScheduleDate(formData.estimatedHours || 2);
-                    setFormData({ ...formData, scheduledDate: suggested });
-                    showNotification(`AI suggested: ${suggested === 'soon' ? 'Soon (capacity full)' : new Date(suggested).toLocaleDateString()}`, 'info');
+                    const newFormData = { ...formData, scheduledDate: suggested };
+                    setFormData(newFormData);
+
+                    // If editing existing task, save immediately
+                    if (editingTask) {
+                      try {
+                        await fetch(`${API_URL}/tasks/${editingTask.id}`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ scheduledDate: suggested })
+                        });
+                        showNotification(`Scheduled for ${suggested === 'soon' ? 'Soon' : new Date(suggested + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`, 'success');
+                        fetchTasks();
+                      } catch (error) {
+                        showNotification('Failed to schedule', 'error');
+                      }
+                    } else {
+                      showNotification(`Will schedule for ${suggested === 'soon' ? 'Soon' : new Date(suggested + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`, 'info');
+                    }
                   }}
                   title="AI will find the best day based on your capacity"
                 >
