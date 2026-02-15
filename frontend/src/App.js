@@ -673,6 +673,67 @@ function App() {
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
+  // Intelligent task splitter - breaks tasks by common delimiters
+  const splitTaskIntelligently = (text) => {
+    const tasks = [];
+
+    // First split by newlines
+    const lines = text.split('\n').filter(line => line.trim());
+
+    for (const line of lines) {
+      let trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
+
+      // Remove bullet points, numbers, etc.
+      trimmed = trimmed.replace(/^[-•*]\s*/, '').replace(/^\d+\.\s*/, '').trim();
+      if (!trimmed) continue;
+
+      // Check if line contains multiple tasks separated by delimiters
+      // Look for patterns like: "task1, task2, task3" or "task1 - task2 - task3" or "task1 -- task2"
+
+      // Split by " -- " (double dash with spaces) first
+      if (trimmed.includes(' -- ')) {
+        const subTasks = trimmed.split(' -- ').map(t => t.trim()).filter(t => t);
+        tasks.push(...subTasks);
+        continue;
+      }
+
+      // Split by " - " (single dash with spaces) - but not if it looks like a date range
+      if (trimmed.includes(' - ') && !trimmed.match(/\d{1,2}\s*-\s*\d{1,2}/)) {
+        const subTasks = trimmed.split(' - ').map(t => t.trim()).filter(t => t);
+        // Only split if we get reasonable task names (not single words that might be part of a phrase)
+        if (subTasks.every(t => t.length > 2)) {
+          tasks.push(...subTasks);
+          continue;
+        }
+      }
+
+      // Split by comma - but be smart about it
+      if (trimmed.includes(',')) {
+        const subTasks = trimmed.split(',').map(t => t.trim()).filter(t => t);
+        // Only split if each part looks like a task (more than 2 chars, not just numbers)
+        if (subTasks.length > 1 && subTasks.every(t => t.length > 2 && !/^\d+$/.test(t))) {
+          tasks.push(...subTasks);
+          continue;
+        }
+      }
+
+      // Split by semicolon
+      if (trimmed.includes(';')) {
+        const subTasks = trimmed.split(';').map(t => t.trim()).filter(t => t);
+        if (subTasks.length > 1 && subTasks.every(t => t.length > 2)) {
+          tasks.push(...subTasks);
+          continue;
+        }
+      }
+
+      // No delimiter found, add as single task
+      tasks.push(trimmed);
+    }
+
+    return tasks;
+  };
+
   // Paste import handler - parses text from Apple Reminders or any line-separated list
   const handlePasteImport = async () => {
     if (!pasteText.trim()) {
@@ -680,18 +741,13 @@ function App() {
       return;
     }
 
-    const lines = pasteText.split('\n').filter(line => line.trim());
+    const taskNames = splitTaskIntelligently(pasteText);
     const today = new Date().toISOString().split('T')[0];
     const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     let importedCount = 0;
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
-
-      // Parse line - could be "Task name" or "- Task name" or "• Task name"
-      let taskName = trimmed.replace(/^[-•*]\s*/, '').replace(/^\d+\.\s*/, '');
-      if (!taskName) continue;
+    for (const taskName of taskNames) {
+      if (!taskName || taskName.length < 2) continue;
 
       try {
         await fetch(`${API_URL}/tasks`, {
@@ -722,6 +778,70 @@ function App() {
 
     setShowPasteImport(false);
     setPasteText('');
+  };
+
+  // Retroactively split existing tasks that contain delimiters
+  const handleSplitExistingTasks = async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    let splitCount = 0;
+    let tasksToDelete = [];
+
+    // Find tasks that can be split
+    for (const task of tasks) {
+      if (task.status === 'completed') continue;
+
+      const subTasks = splitTaskIntelligently(task.name);
+
+      // Only split if we get more than one task
+      if (subTasks.length > 1) {
+        // Create new tasks for each sub-task
+        for (const subTaskName of subTasks) {
+          if (!subTaskName || subTaskName.length < 2) continue;
+
+          try {
+            await fetch(`${API_URL}/tasks`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: subTaskName,
+                start: task.start || today,
+                end: task.end || nextWeek,
+                status: task.status || 'not_started',
+                priority: task.priority || 'medium',
+                category: task.category || 'general',
+                projectId: task.projectId || 'default',
+                scheduledDate: task.scheduledDate,
+                color: task.color
+              })
+            });
+            splitCount++;
+          } catch (error) {
+            console.error('Failed to create split task:', subTaskName, error);
+          }
+        }
+
+        // Mark original task for deletion
+        tasksToDelete.push(task.id);
+      }
+    }
+
+    // Delete original tasks that were split
+    for (const taskId of tasksToDelete) {
+      try {
+        await fetch(`${API_URL}/tasks/${taskId}`, { method: 'DELETE' });
+      } catch (error) {
+        console.error('Failed to delete original task:', taskId, error);
+      }
+    }
+
+    if (splitCount > 0) {
+      showNotification(`Split into ${splitCount} tasks (from ${tasksToDelete.length} original)`, 'success');
+      fetchTasks();
+      fetchStats();
+    } else {
+      showNotification('No tasks found to split', 'info');
+    }
   };
 
   // Calendar helpers
@@ -951,6 +1071,7 @@ function App() {
                   <button onClick={() => { handleExport('csv'); setShowDropdown(false); }}>Export CSV</button>
                   <button onClick={() => { setShowImportModal(true); setShowDropdown(false); }}>Import JSON</button>
                   <button onClick={() => { setShowPasteImport(true); setShowDropdown(false); }}>📋 Paste Import</button>
+                  <button onClick={() => { handleSplitExistingTasks(); setShowDropdown(false); }}>✂️ Split Tasks</button>
                 </div>
               )}
             </div>
@@ -1640,23 +1761,24 @@ function App() {
       {/* Paste Import Modal */}
       {showPasteImport && (
         <div className="modal-overlay" onClick={() => setShowPasteImport(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal large" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>📋 Paste Import</h2>
               <button className="close-modal" onClick={() => setShowPasteImport(false)}>×</button>
             </div>
             <div className="modal-body">
               <p style={{ marginBottom: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                Paste your reminders from Apple Reminders, Notes, or any list. One task per line.
+                Paste your reminders from Apple Reminders, Notes, or any list. Tasks are automatically split by commas, dashes (--), or semicolons.
               </p>
               <textarea
                 value={pasteText}
                 onChange={e => setPasteText(e.target.value)}
-                placeholder="- Buy groceries
-- Call dentist
-- Review project proposal
-- Send invoice to client"
-                rows={10}
+                placeholder="Buy groceries, Call dentist, Review proposal
+Or use dashes: Task 1 -- Task 2 -- Task 3
+Or one per line:
+- Send invoice
+- Schedule meeting"
+                rows={8}
                 style={{
                   width: '100%',
                   padding: '0.75rem',
@@ -1670,13 +1792,30 @@ function App() {
                 }}
                 autoFocus
               />
+              {pasteText && (
+                <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--bg-card)', borderRadius: '8px', maxHeight: '150px', overflowY: 'auto' }}>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Preview ({splitTaskIntelligently(pasteText).length} tasks):</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                    {splitTaskIntelligently(pasteText).slice(0, 20).map((task, i) => (
+                      <span key={i} style={{ padding: '0.25rem 0.5rem', background: 'var(--bg-card-hover)', borderRadius: '4px', fontSize: '0.75rem', color: 'var(--text-primary)' }}>
+                        {task.length > 30 ? task.substring(0, 30) + '...' : task}
+                      </span>
+                    ))}
+                    {splitTaskIntelligently(pasteText).length > 20 && (
+                      <span style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        +{splitTaskIntelligently(pasteText).length - 20} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
               <p style={{ marginTop: '0.5rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                Tip: In Apple Reminders, select tasks and press Cmd+C to copy them.
+                💡 Tip: In Apple Reminders, select tasks and press Cmd+C to copy them.
               </p>
             </div>
             <div className="modal-actions">
               <button className="cancel-btn" onClick={() => { setShowPasteImport(false); setPasteText(''); }}>Cancel</button>
-              <button className="save-btn" onClick={handlePasteImport}>Import {pasteText.split('\n').filter(l => l.trim()).length} Tasks</button>
+              <button className="save-btn" onClick={handlePasteImport}>Import {splitTaskIntelligently(pasteText).length} Tasks</button>
             </div>
           </div>
         </div>
