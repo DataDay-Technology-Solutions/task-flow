@@ -288,6 +288,100 @@ function App() {
 
   const capacity = calculateCapacity();
 
+  // AI Task Duration Estimator - analyzes task name to estimate hours
+  const estimateTaskDuration = (taskName, description = '') => {
+    const text = `${taskName} ${description}`.toLowerCase();
+
+    // Quick tasks (0.5 - 1 hour)
+    const quickPatterns = [
+      /\b(reply|respond|answer|check|review email|quick|brief|simple|minor|small|typo|fix bug|hotfix)\b/,
+      /\b(call|phone|message|text|slack|ping)\b/,
+      /\b(update status|status update|standup|sync)\b/
+    ];
+
+    // Short tasks (1-2 hours)
+    const shortPatterns = [
+      /\b(review|feedback|comment|approve|sign off)\b/,
+      /\b(schedule|book|arrange|organize)\b/,
+      /\b(draft|outline|sketch|wireframe)\b/,
+      /\b(test|verify|validate|check)\b/,
+      /\b(fix|patch|tweak|adjust|modify)\b/
+    ];
+
+    // Medium tasks (2-4 hours)
+    const mediumPatterns = [
+      /\b(create|build|make|develop|write|implement)\b/,
+      /\b(design|mockup|prototype)\b/,
+      /\b(meeting|presentation|demo|workshop)\b/,
+      /\b(document|documentation|readme|guide)\b/,
+      /\b(analyze|research|investigate|explore)\b/
+    ];
+
+    // Long tasks (4-8 hours)
+    const longPatterns = [
+      /\b(feature|module|component|service|api|endpoint)\b/,
+      /\b(refactor|rewrite|overhaul|migrate)\b/,
+      /\b(integration|integrate|connect)\b/,
+      /\b(setup|configure|install|deploy)\b/
+    ];
+
+    // Very long tasks (8+ hours)
+    const veryLongPatterns = [
+      /\b(project|system|platform|application|app)\b/,
+      /\b(architecture|redesign|rebuild)\b/,
+      /\b(full|complete|comprehensive|entire)\b/
+    ];
+
+    // Check patterns and return estimate
+    for (const pattern of quickPatterns) {
+      if (pattern.test(text)) return { hours: 0.5, confidence: 'high', category: 'quick' };
+    }
+    for (const pattern of shortPatterns) {
+      if (pattern.test(text)) return { hours: 1.5, confidence: 'high', category: 'short' };
+    }
+    for (const pattern of mediumPatterns) {
+      if (pattern.test(text)) return { hours: 3, confidence: 'medium', category: 'medium' };
+    }
+    for (const pattern of longPatterns) {
+      if (pattern.test(text)) return { hours: 6, confidence: 'medium', category: 'long' };
+    }
+    for (const pattern of veryLongPatterns) {
+      if (pattern.test(text)) return { hours: 12, confidence: 'low', category: 'very long' };
+    }
+
+    // Default estimate based on word count
+    const wordCount = text.split(/\s+/).length;
+    if (wordCount <= 3) return { hours: 1, confidence: 'low', category: 'unknown' };
+    if (wordCount <= 6) return { hours: 2, confidence: 'low', category: 'unknown' };
+    return { hours: 4, confidence: 'low', category: 'unknown' };
+  };
+
+  // Calculate capacity insights
+  const getCapacityInsights = () => {
+    const avgTaskHours = 2; // Average task duration
+    const { todaysAvailable, weekAvailable, backlogHours, soonHours } = capacity;
+
+    const tasksCanFitToday = Math.floor(todaysAvailable / avgTaskHours);
+    const tasksCanFitWeek = Math.floor(weekAvailable / avgTaskHours);
+    const daysToCompleteBacklog = Math.ceil(backlogHours / capacity.hoursPerDay);
+    const daysToCompleteSoon = Math.ceil(soonHours / capacity.hoursPerDay);
+
+    const totalPendingHours = backlogHours + soonHours + capacity.weekHours;
+    const totalPendingTasks = tasks.filter(t => t.status !== 'completed').length;
+
+    return {
+      tasksCanFitToday,
+      tasksCanFitWeek,
+      daysToCompleteBacklog,
+      daysToCompleteSoon,
+      totalPendingHours,
+      totalPendingTasks,
+      avgTaskHours: totalPendingTasks > 0 ? Math.round(totalPendingHours / totalPendingTasks * 10) / 10 : 0
+    };
+  };
+
+  const capacityInsights = getCapacityInsights();
+
   // AI Smart Scheduling - find best date for a task
   const suggestScheduleDate = (estimatedHours = 2) => {
     const hoursPerDay = 8;
@@ -1142,6 +1236,9 @@ function App() {
                 {capacity.isOverloaded && ' ⚠️'}
               </span>
               <span className="capacity-week">Week: {capacity.weekHours}h / {capacity.weekCapacity}h</span>
+              <span className="capacity-insight" title={`${capacityInsights.totalPendingTasks} tasks pending, avg ${capacityInsights.avgTaskHours}h each`}>
+                ✨ Can fit ~{capacityInsights.tasksCanFitToday} more today
+              </span>
             </div>
           </div>
         )}
@@ -1590,10 +1687,24 @@ function App() {
                 </div>
               </div>
 
-              <div className="form-row">
+              <div className="form-row estimate-row">
                 <div className="form-group">
-                  <label>Estimated Hours</label>
-                  <input type="number" value={formData.estimatedHours} onChange={e => setFormData({ ...formData, estimatedHours: parseFloat(e.target.value) || 0 })} min="0" step="0.5" />
+                  <label>⏱️ Estimated Hours</label>
+                  <div className="estimate-input-group">
+                    <input type="number" value={formData.estimatedHours} onChange={e => setFormData({ ...formData, estimatedHours: parseFloat(e.target.value) || 0 })} min="0" step="0.5" />
+                    <button
+                      type="button"
+                      className="auto-estimate-btn"
+                      onClick={() => {
+                        const estimate = estimateTaskDuration(formData.name, formData.description);
+                        setFormData({ ...formData, estimatedHours: estimate.hours });
+                        showNotification(`Estimated ${estimate.hours}h (${estimate.category}, ${estimate.confidence} confidence)`, 'info');
+                      }}
+                      title="AI estimates duration based on task name"
+                    >
+                      🤖
+                    </button>
+                  </div>
                 </div>
                 <div className="form-group">
                   <label>Actual Hours</label>

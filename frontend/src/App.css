@@ -452,6 +452,41 @@
   font-size: 0.7rem;
   color: var(--text-muted);
 }
+.capacity-insight {
+  font-size: 0.7rem;
+  color: #50C878;
+  padding: 0.25rem 0.5rem;
+  background: rgba(80, 200, 120, 0.1);
+  border-radius: 4px;
+  cursor: help;
+}
+
+/* Estimate input group */
+.estimate-input-group {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.estimate-input-group input {
+  flex: 1;
+}
+.auto-estimate-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #50C878, #2ECC71);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+.auto-estimate-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(80, 200, 120, 0.4);
+}
 
 .kanban-date-board {
   flex: 1;
