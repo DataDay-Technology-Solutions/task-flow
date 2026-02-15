@@ -1054,7 +1054,12 @@
 /* Responsive */
 @media (max-width: 1200px) {
   .main.with-sidebar { padding-right: 1.5rem; }
-  .task-list-panel { display: none; }
+  .task-list-panel {
+    position: fixed;
+    z-index: 100;
+    box-shadow: -4px 0 20px rgba(0,0,0,0.3);
+    background: var(--bg-card);
+  }
 }
 
 @media (max-width: 900px) {

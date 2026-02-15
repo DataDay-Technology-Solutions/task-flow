@@ -204,19 +204,30 @@ function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Ignore shortcuts when typing in input fields (except for Escape and Ctrl/Cmd shortcuts)
+      const isTyping = document.activeElement?.tagName === 'INPUT' ||
+                       document.activeElement?.tagName === 'TEXTAREA' ||
+                       document.activeElement?.isContentEditable;
+
+      // Ctrl/Cmd shortcuts work everywhere
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); handleUndo(); }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); handleRedo(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'n') { e.preventDefault(); handleAddTask(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); document.querySelector('.search-input')?.focus(); }
+
+      // Escape works everywhere
       if (e.key === 'Escape') {
         setShowModal(false); setShowStats(false); setShowImportModal(false);
         setShowDependencyMode(false); setDependencySource(null); setShowAiPanel(false);
+        document.activeElement?.blur(); // Also unfocus inputs
       }
-      if (!showModal && e.key === '1') setCurrentView('gantt');
-      if (!showModal && e.key === '2') setCurrentView('kanban');
-      if (!showModal && e.key === '3') setCurrentView('calendar');
-      if (!showModal && e.key === '4') setCurrentView('list');
-      if (!showModal && e.key === '5') setCurrentView('dashboard');
+
+      // Number shortcuts only when not typing
+      if (!isTyping && !showModal && e.key === '1') setCurrentView('gantt');
+      if (!isTyping && !showModal && e.key === '2') setCurrentView('kanban');
+      if (!isTyping && !showModal && e.key === '3') setCurrentView('calendar');
+      if (!isTyping && !showModal && e.key === '4') setCurrentView('list');
+      if (!isTyping && !showModal && e.key === '5') setCurrentView('dashboard');
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -1079,11 +1090,14 @@ function App() {
       const response = await fetch(`${API_URL}/tasks/auto-move`, { method: 'POST' });
       const data = await response.json();
       if (data.moved > 0) {
-        showNotification(`${data.moved} overdue task(s) auto-moved`, 'info');
+        showNotification(`${data.moved} task(s) auto-scheduled`, 'success');
         setTasks(data.tasks);
+      } else {
+        showNotification('No tasks to auto-move', 'info');
       }
     } catch (error) {
       console.error('Failed to auto-move tasks:', error);
+      showNotification('Failed to auto-move tasks', 'error');
     }
   }, []);
 
@@ -1295,7 +1309,7 @@ function App() {
                 onProgressChange={handleProgressChange}
                 onDoubleClick={handleDoubleClick}
                 listCellWidth=""
-                columnWidth={ganttViewMode === ViewMode.Month ? 300 : ganttViewMode === ViewMode.Week ? 250 : columnWidth}
+                columnWidth={ganttViewMode === ViewMode.Month ? 300 : ganttViewMode === ViewMode.Week ? 250 : ganttViewMode === ViewMode.Hour ? 40 : columnWidth}
                 barCornerRadius={4}
                 barFill={60}
                 handleWidth={8}

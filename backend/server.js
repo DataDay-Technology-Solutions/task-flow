@@ -433,24 +433,40 @@ app.post('/api/tasks/auto-move', (req, res) => {
     const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
     let movedCount = 0;
 
-    // Find overdue tasks (scheduledDate in the past, not completed)
     data.tasks.forEach(task => {
+      if (task.status === 'completed') return;
+
+      const priority = task.priority || 'medium';
+      const priorityValue = priorityOrder[priority] ?? 2;
+
+      // Case 1: Overdue scheduled tasks (scheduledDate in the past)
       if (task.scheduledDate &&
           task.scheduledDate !== 'soon' &&
-          task.scheduledDate < today &&
-          task.status !== 'completed') {
-
-        const priority = task.priority || 'medium';
-        const priorityValue = priorityOrder[priority] ?? 2;
+          task.scheduledDate < today) {
 
         if (priorityValue <= 1) {
-          // High/Critical priority: move to today
           task.scheduledDate = today;
           logActivity('auto_moved', task.id, task.name, { reason: 'overdue_priority', newDate: today });
         } else {
-          // Low/Medium priority: move to staging (soon)
           task.scheduledDate = 'soon';
           logActivity('auto_moved', task.id, task.name, { reason: 'overdue_staging', newDate: 'soon' });
+        }
+        movedCount++;
+      }
+
+      // Case 2: Backlog tasks whose date range includes today - auto-schedule them
+      else if ((task.scheduledDate === null || task.scheduledDate === undefined) &&
+               task.start && task.end &&
+               task.start <= today && task.end >= today) {
+
+        if (priorityValue <= 1) {
+          // High/Critical: schedule for today
+          task.scheduledDate = today;
+          logActivity('auto_moved', task.id, task.name, { reason: 'active_range_priority', newDate: today });
+        } else {
+          // Medium/Low: move to "soon"
+          task.scheduledDate = 'soon';
+          logActivity('auto_moved', task.id, task.name, { reason: 'active_range', newDate: 'soon' });
         }
         movedCount++;
       }
