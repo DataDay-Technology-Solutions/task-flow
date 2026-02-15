@@ -1671,9 +1671,15 @@ function App() {
                 <input type="text" value={formData.tags.join(', ')} onChange={e => setFormData({ ...formData, tags: e.target.value.split(',').map(t => t.trim()).filter(t => t) })} placeholder="bug, feature, urgent" />
               </div>
 
-              <div className="form-group">
+              <div className="form-group description-group">
                 <label>Description</label>
-                <textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Notes..." rows={3} />
+                <textarea
+                  value={formData.description}
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Add notes, details, or subtasks..."
+                  rows={8}
+                  className="description-textarea"
+                />
               </div>
             </div>
             <div className="modal-actions">

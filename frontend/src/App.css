@@ -952,6 +952,19 @@
   transition: all 0.2s;
 }
 .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: #4A90D9; box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.2); }
+
+/* Description textarea - larger for easier editing */
+.description-group {
+  margin-top: 0.5rem;
+}
+.description-textarea {
+  min-height: 150px;
+  max-height: 300px;
+  resize: vertical;
+  line-height: 1.5;
+  font-size: 0.9rem !important;
+}
+
 .form-group input[type="range"] { width: 100%; -webkit-appearance: none; height: 6px; background: var(--border-color); border-radius: 3px; cursor: pointer; }
 .form-group input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: #4A90D9; border-radius: 50%; cursor: pointer; }
 
