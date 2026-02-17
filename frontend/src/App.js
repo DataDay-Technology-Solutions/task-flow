@@ -1042,6 +1042,7 @@ function App() {
     });
 
     // Day columns - only from today onwards (skip past days)
+    // Also skip empty future days (only show days with tasks)
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month, day);
       date.setHours(0, 0, 0, 0);
@@ -1053,6 +1054,12 @@ function App() {
       if (isPast && !isToday) continue;
 
       const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'short' });
+      const dayTasks = filteredTasks.filter(t =>
+        t.status !== 'completed' && t.scheduledDate === dateStr
+      );
+
+      // Skip empty future day columns (but always show today)
+      if (!isToday && dayTasks.length === 0) continue;
 
       columns.push({
         id: dateStr,
@@ -1062,9 +1069,7 @@ function App() {
         isToday,
         isPast: false,
         color: isToday ? '#4A90D9' : '#50C878',
-        tasks: filteredTasks.filter(t =>
-          t.status !== 'completed' && t.scheduledDate === dateStr
-        )
+        tasks: dayTasks
       });
     }
 
@@ -1309,7 +1314,13 @@ function App() {
                 onProgressChange={handleProgressChange}
                 onDoubleClick={handleDoubleClick}
                 listCellWidth=""
-                columnWidth={ganttViewMode === ViewMode.Month ? 300 : ganttViewMode === ViewMode.Week ? 250 : ganttViewMode === ViewMode.Hour ? 40 : columnWidth}
+                columnWidth={(() => {
+                  const zoomFactor = columnWidth / 65;
+                  if (ganttViewMode === ViewMode.Month) return Math.round(300 * zoomFactor);
+                  if (ganttViewMode === ViewMode.Week) return Math.round(250 * zoomFactor);
+                  if (ganttViewMode === ViewMode.Hour) return Math.round(40 * zoomFactor);
+                  return columnWidth;
+                })()}
                 barCornerRadius={4}
                 barFill={60}
                 handleWidth={8}
@@ -1858,7 +1869,7 @@ function App() {
                     <div key={status} className="stat-bar-row">
                       <span className="stat-bar-label">{s?.label}</span>
                       <div className="stat-bar-container">
-                        <div className="stat-bar-fill" style={{ width: `${(count / stats.total) * 100}%`, backgroundColor: s?.color }}></div>
+                        <div className="stat-bar-fill" style={{ width: `${stats.total > 0 ? Math.max((count / stats.total) * 100, count > 0 ? 5 : 0) : 0}%`, backgroundColor: s?.color }}></div>
                       </div>
                       <span className="stat-bar-value">{count}</span>
                     </div>

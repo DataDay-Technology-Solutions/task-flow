@@ -319,20 +319,58 @@
   flex: 1;
 }
 
-/* Gantt Theme Overrides */
+/* Gantt Theme Overrides - Dark Mode */
+.app.dark .gantt-container svg { background: var(--bg-card) !important; }
+.app.dark .gantt-container rect { fill: var(--bg-card) !important; }
+.app.dark .gantt-container g[class*="gridBody"] rect { fill: var(--bg-primary) !important; }
+.app.dark .gantt-container g[class*="gridBody"] rect:nth-child(even) { fill: #1e1e3f !important; }
+.app.dark .gantt-container text { fill: var(--text-primary) !important; }
+.app.dark .gantt-container line { stroke: var(--border-color) !important; }
+.app.dark .gantt-container [class*="barWrapper"] rect { fill: inherit !important; }
+.app.dark .gantt-container [class*="barLabel"] { fill: #ffffff !important; font-weight: 500 !important; }
+
+/* Gantt minified class overrides - Dark Mode */
 .app.dark .gantt-container ._2dZTy { fill: var(--bg-primary) !important; }
-.app.dark .gantt-container ._3rUKi { fill: #2a2a4e !important; }
-.app.dark .gantt-container ._3lLk3 { fill: var(--text-muted) !important; }
+.app.dark .gantt-container ._3rUKi { fill: #1e1e3f !important; }
+.app.dark .gantt-container ._3lLk3 { fill: var(--text-muted) !important; color: var(--text-muted) !important; }
 .app.dark .gantt-container ._nI1Xw { stroke: var(--border-color) !important; }
 .app.dark .gantt-container ._35nLX { fill: var(--text-primary) !important; }
 .app.dark .gantt-container ._1KJ6x { fill: var(--text-primary) !important; }
+.app.dark .gantt-container ._34SS0:nth-of-type(even) { background-color: #1e1e3f !important; }
+.app.dark .gantt-container ._34SS0 { background-color: var(--bg-card) !important; }
 
+/* Fix task bar text visibility */
+.app.dark .gantt-container [class*="bar"] text,
+.app.dark .gantt-container g > text {
+  fill: #ffffff !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+}
+
+/* Gantt Theme Overrides - Light Mode */
+.app.light .gantt-container svg { background: #ffffff !important; }
+.app.light .gantt-container rect { fill: #ffffff !important; }
+.app.light .gantt-container g[class*="gridBody"] rect { fill: #f8f9fa !important; }
+.app.light .gantt-container g[class*="gridBody"] rect:nth-child(even) { fill: #e9ecef !important; }
+.app.light .gantt-container text { fill: #333 !important; }
+.app.light .gantt-container line { stroke: #dee2e6 !important; }
 .app.light .gantt-container ._2dZTy { fill: #f8f9fa !important; }
 .app.light .gantt-container ._3rUKi { fill: #e9ecef !important; }
-.app.light .gantt-container ._3lLk3 { fill: #666 !important; }
+.app.light .gantt-container ._3lLk3 { fill: #666 !important; color: #666 !important; }
 .app.light .gantt-container ._nI1Xw { stroke: #dee2e6 !important; }
 .app.light .gantt-container ._35nLX { fill: #333 !important; }
 .app.light .gantt-container ._1KJ6x { fill: #333 !important; }
+.app.light .gantt-container ._34SS0:nth-of-type(even) { background-color: #f5f5f5 !important; }
+.app.light .gantt-container ._34SS0 { background-color: #ffffff !important; }
+
+/* Fix tooltip styling */
+.app.dark .gantt-container [class*="tooltip"],
+.app.dark .gantt-container ._3T42e {
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+.app.dark .gantt-container ._29NTg { color: var(--text-muted) !important; }
 
 /* Kanban View */
 .kanban-board {
