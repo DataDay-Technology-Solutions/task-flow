@@ -178,6 +178,39 @@ function generateSmartSuggestions(tasks) {
     });
   }
 
+  // Always show capacity summary if no alerts
+  if (suggestions.length === 0) {
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter(t => t.status === 'completed').length;
+    const pendingTasks = totalTasks - completedTasks;
+    const totalHours = tasks.reduce((sum, t) => sum + (t.estimatedHours || 2), 0);
+    const completedHours = tasks.filter(t => t.status === 'completed').reduce((sum, t) => sum + (t.estimatedHours || 2), 0);
+
+    if (totalTasks > 0) {
+      const completionRate = Math.round((completedTasks / totalTasks) * 100);
+      suggestions.push({
+        type: 'info',
+        title: 'Progress Summary',
+        message: `${completedTasks}/${totalTasks} tasks done (${completionRate}%). ${pendingTasks} remaining.`
+      });
+
+      if (pendingTasks > 0) {
+        const avgHoursPerTask = Math.round((totalHours - completedHours) / pendingTasks);
+        suggestions.push({
+          type: 'suggestion',
+          title: 'Time Estimate',
+          message: `~${totalHours - completedHours}h of work remaining (avg ${avgHoursPerTask}h/task)`
+        });
+      }
+    } else {
+      suggestions.push({
+        type: 'info',
+        title: 'Getting Started',
+        message: 'Add your first task to get AI-powered insights and suggestions.'
+      });
+    }
+  }
+
   return suggestions;
 }
 

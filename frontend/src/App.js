@@ -44,6 +44,20 @@ const VIEWS = [
   { id: 'dashboard', label: 'Dashboard', icon: '📈' }
 ];
 
+// Consistent date formatting helper
+const formatDate = (dateStr, format = 'short') => {
+  if (!dateStr) return '-';
+  const date = new Date(dateStr + 'T12:00:00'); // Avoid timezone issues
+  if (format === 'short') {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } else if (format === 'full') {
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  } else if (format === 'weekday') {
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+  return date.toLocaleDateString('en-US');
+};
+
 function App() {
   const [tasks, setTasks] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -794,7 +808,16 @@ function App() {
       if (!trimmed) continue;
 
       // Check if line contains multiple tasks separated by delimiters
-      // Look for patterns like: "task1, task2" or "task1 - task2" or "task1 -- task2" or "task1 -task2"
+      // Look for patterns like: "task1, task2" or "task1 - task2" or "task1 -- task2" or "task1 — task2"
+
+      // Split by em dash (—) or en dash (–) patterns first
+      if (/\s*[—–]\s*/.test(trimmed)) {
+        const subTasks = trimmed.split(/\s*[—–]\s*/).map(t => t.trim()).filter(t => t);
+        if (subTasks.length > 1 && subTasks.every(t => t.length > 2)) {
+          tasks.push(...subTasks);
+          continue;
+        }
+      }
 
       // Split by double dash patterns: " -- ", " --", "-- "
       if (/ ?-- ?/.test(trimmed)) {
@@ -981,7 +1004,8 @@ function App() {
 
   const getTasksForDate = (date) => {
     const dateStr = date.toISOString().split('T')[0];
-    return filteredTasks.filter(t => t.start <= dateStr && t.end >= dateStr);
+    // Show tasks only on their start date (not duplicated across all days in range)
+    return filteredTasks.filter(t => t.start === dateStr);
   };
 
   const isToday = (date) => {
@@ -1166,8 +1190,8 @@ function App() {
 
         <div className="header-right">
           <div className="toolbar">
-            <button className={`toolbar-btn ${!canUndo ? 'disabled' : ''}`} onClick={handleUndo} disabled={!canUndo} title="Undo">↶</button>
-            <button className={`toolbar-btn ${!canRedo ? 'disabled' : ''}`} onClick={handleRedo} disabled={!canRedo} title="Redo">↷</button>
+            <button className={`toolbar-btn ${!canUndo ? 'disabled' : ''}`} onClick={(e) => { e.stopPropagation(); handleUndo(); }} disabled={!canUndo} title="Undo">↶</button>
+            <button className={`toolbar-btn ${!canRedo ? 'disabled' : ''}`} onClick={(e) => { e.stopPropagation(); handleRedo(); }} disabled={!canRedo} title="Redo">↷</button>
             <div className="toolbar-divider"></div>
             <button className={`toolbar-btn ${showAiPanel ? 'active' : ''}`} onClick={() => setShowAiPanel(!showAiPanel)} title="AI Suggestions">🤖</button>
             <button className="toolbar-btn" onClick={() => setShowStats(true)} title="Statistics">📊</button>
@@ -1481,8 +1505,8 @@ function App() {
                       </div>
                       <span className="progress-text">{task.progress}%</span>
                     </td>
-                    <td>{new Date(task.start).toLocaleDateString()}</td>
-                    <td>{new Date(task.end).toLocaleDateString()}</td>
+                    <td>{formatDate(task.start)}</td>
+                    <td>{formatDate(task.end)}</td>
                     <td>{task.estimatedHours || '-'}</td>
                     <td>{task.actualHours || '-'}</td>
                     <td>
@@ -1555,7 +1579,7 @@ function App() {
                       <div className="deadline-color" style={{ backgroundColor: task.color }}></div>
                       <div className="deadline-info">
                         <span className="deadline-name">{task.name}</span>
-                        <span className="deadline-date">{new Date(task.end).toLocaleDateString()}</span>
+                        <span className="deadline-date">{formatDate(task.end)}</span>
                       </div>
                       {getPriorityBadge(task.priority)}
                     </div>
@@ -1571,7 +1595,7 @@ function App() {
                     {dashboard.overdue.map(task => (
                       <div key={task.id} className="overdue-item" onClick={() => handleDoubleClick({ id: task.id })}>
                         <span className="overdue-name">{task.name}</span>
-                        <span className="overdue-date">Due: {new Date(task.end).toLocaleDateString()}</span>
+                        <span className="overdue-date">Due: {formatDate(task.end)}</span>
                       </div>
                     ))}
                   </div>
@@ -1985,9 +2009,9 @@ Or one per line:
       <footer className="footer">
         <div className="shortcuts-hint">
           <span>1-5: Views</span>
-          <span>Ctrl+N: New</span>
-          <span>Ctrl+Z/Y: Undo/Redo</span>
-          <span>Ctrl+F: Search</span>
+          <span>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+N: New</span>
+          <span>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Z/Y: Undo/Redo</span>
+          <span>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+F: Search</span>
         </div>
       </footer>
     </div>

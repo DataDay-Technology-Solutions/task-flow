@@ -372,6 +372,18 @@
 }
 .app.dark .gantt-container ._29NTg { color: var(--text-muted) !important; }
 
+/* Fix Gantt bar text overflow - keep text inside bars */
+.gantt-container [class*="barLabel"],
+.gantt-container [class*="barWrapper"] text {
+  text-overflow: ellipsis !important;
+  overflow: hidden !important;
+}
+.gantt-container g[class*="bar"] > text {
+  dominant-baseline: middle !important;
+  text-anchor: start !important;
+  font-size: 11px !important;
+}
+
 /* Kanban View */
 .kanban-board {
   display: flex;
@@ -464,6 +476,9 @@
   margin-left: 1rem;
   padding-left: 1rem;
   border-left: 1px solid var(--border-color);
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
 }
 .capacity-badge {
   padding: 0.35rem 0.75rem;
@@ -1109,6 +1124,8 @@
   .dashboard-grid { grid-template-columns: 1fr; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .footer { display: none; }
+  .capacity-insight { display: none; }
+  .capacity-week { display: none; }
 }
 
 @media (max-width: 600px) {
